@@ -702,9 +702,10 @@ pub fn schema_json(only: Option<&str>) -> Value {
             {"op": "map.create", "params": "title, outline (indented text or nested [{text, children}]), optional idea_id / project_id", "example": {"op": "map.create", "title": "发布会", "outline": "场地\n  预算\n嘉宾\n  邀请名单"}},
             {"op": "link.create", "params": "source, target, relation, note, status (agents: suggested)", "example": {"op": "link.create", "source": "idea_…", "target": "idea_…", "relation": "inspired_by", "status": "suggested", "note": "同一个用户痛点"}},
             {"op": "link.confirm", "params": "id", "example": {"op": "link.confirm", "id": "link_…"}},
-            {"op": "undo", "params": "batch (bat_…) | op (op_…) | last:true; force:true ignores later edits", "example": {"op": "undo", "batch": "bat_…"}}
+            {"op": "undo", "params": "batch (bat_…) | op (op_…) | last:true; force:true ignores later edits", "example": {"op": "undo", "batch": "bat_…"}},
+            {"op": "review.ack", "params": "user only: mark all agent changes up to now as reviewed", "example": {"op": "review.ack"}}
         ],
-        "queries": ["today", "list", "get", "search", "related", "graph", "log", "trash", "schema", "doctor", "status", "snapshot"],
+        "queries": ["today", "list", "get", "search", "related", "graph", "log", "trash", "schema", "doctor", "status", "snapshot", "review"],
         "conventions": [
             "A request is {\"ops\":[…]} (or one op, or an array). All ops in a request succeed or fail together.",
             "dry_run:true validates and shows the result without saving.",

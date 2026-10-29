@@ -116,7 +116,7 @@ Object.assign(SY, { COLS, IDEA_ST, TASK_ST, PROJ_ST, AREA, PALETTE });
 
 const S = SY.S = {
   data: { ideas: new Map(), projects: new Map(), tasks: new Map(), maps: new Map(), links: new Map() },
-  rev: 0, seq: 0, permission: 'write', unseenAgent: 0,
+  rev: 0, seq: 0, permission: 'write', unseenAgent: 0, pending: new Map(),
   ready: false, saveErr: null, editing: false, dragging: false,
   ui: Object.assign({
     view: 'today', projectId: null, ptab: 'board', scope: 'all', ideaFilter: 'inbox', tag: '', q: '',
@@ -245,7 +245,7 @@ Object.assign(SY, { getP, pColor, cv, taskSort, scopeTasks, est, dur, span, pSta
 let rq = 0;
 function scheduleRender() { if (rq) return; rq = requestAnimationFrame(() => { rq = 0; renderAll(); }); }
 SY.scheduleRender = scheduleRender;
-function renderAll() { renderNav(); renderCapture(); renderView(); renderInspector(); }
+function renderAll() { renderNav(); renderCapture(); renderReview(); renderView(); renderInspector(); }
 SY.renderAll = renderAll;
 
 const NAV = [
@@ -284,6 +284,13 @@ function renderStatus() {
     <div style="line-height:1.7">${SY.keys('⌘K 搜索 · ⌘N 记录 · ⌘1–⌘9 切换')}<br>Esc 关闭详情</div>
     ${SY.updateFootHtml ? SY.updateFootHtml() : ''}`;
 }
+function renderReview() {
+  const el = $('#review-banner'); if (!el) return;
+  const n = S.pending ? S.pending.size : 0;
+  if (!n) { el.hidden = true; el.innerHTML = ''; return; }
+  el.hidden = false;
+  el.innerHTML = `<span class="rb-ic">${icon('spark', 14)}</span><span class="rb-t">AI 改了 <b>${n}</b> 处，待确认</span><button type="button" class="mini" data-act="review-ack">${icon('check', 13)}确认</button>`;
+}
 function renderCapture() {
   const f = $('#capture'); const task = S.ui.capMode === 'task';
   f.classList.toggle('is-task', task);
@@ -317,6 +324,10 @@ function renderView() {
 
 /* ================= shared components ================= */
 const isSel = (col, id) => S.sel && S.sel.col === col && S.sel.id === id;
+/* AI 待确认标记：agent 改动后高亮，直到用户在横幅点「确认」 */
+const aiCls = id => (S.pending.has(id) ? ' is-ai' : '');
+const aiBadge = id => (S.pending.has(id) ? `<span class="pill pill-ai" title="AI 改过这里，待确认">${icon('spark', 11)}AI 改</span>` : '');
+const aiNote = id => { const p = S.pending.get(id); return p ? `<div class="insp-ai">${icon('spark', 13)} AI 最近改过这里${p.summary ? '：' + esc(p.summary) : ''}（待确认）</div>` : ''; };
 const prioTag = p => (p > 0 ? `<span class="prio prio-${p}">P${p}</span>` : '');
 const projChip = p => (p ? `<span class="pchip"><span class="dot" style="--c:${cv(pColor(p))}"></span>${esc(p.name)}</span>` : `<span class="pchip"><span class="dot"></span>零散</span>`);
 function dueTag(t) {
@@ -327,10 +338,10 @@ function dueTag(t) {
 }
 function taskRow(t, opt = {}) {
   const done = t.status === 'done', inToday = t.todayDate === TODAY();
-  return `<div tabindex="0" class="trow ${done ? 'is-done' : ''} ${isSel('tasks', t.id) ? 'is-sel' : ''}" data-open="tasks:${esc(t.id)}">
+  return `<div tabindex="0" class="trow ${done ? 'is-done' : ''} ${isSel('tasks', t.id) ? 'is-sel' : ''}${aiCls(t.id)}" data-open="tasks:${esc(t.id)}">
     <button type="button" class="chk ${t.status === 'doing' ? 'is-doing' : ''}" data-act="toggle-done" data-id="${esc(t.id)}" aria-label="${done ? '标记为未完成' : '标记为完成'}">${done ? icon('check', 13) : ''}</button>
     <div class="trow-main"><div class="trow-title">${esc(t.title)}</div>
-      <div class="meta">${prioTag(t.priority)}${t.status === 'doing' && !opt.hideDoing ? '<span class="pill pill-doing">进行中</span>' : ''}${opt.noProject ? '' : projChip(getP(t.projectId))}${dueTag(t)}${(t.deps || []).length ? `<span>${icon('link', 12)} ${t.deps.length}</span>` : ''}${t.note ? '<span>有备注</span>' : ''}</div></div>
+      <div class="meta">${aiBadge(t.id)}${prioTag(t.priority)}${t.status === 'doing' && !opt.hideDoing ? '<span class="pill pill-doing">进行中</span>' : ''}${opt.noProject ? '' : projChip(getP(t.projectId))}${dueTag(t)}${(t.deps || []).length ? `<span>${icon('link', 12)} ${t.deps.length}</span>` : ''}${t.note ? '<span>有备注</span>' : ''}</div></div>
     ${done ? '' : `<button type="button" class="today-btn ${inToday ? 'is-on' : ''}" data-act="toggle-today" data-id="${esc(t.id)}" title="${inToday ? '移出今日' : '加入今日'}" aria-label="${inToday ? '移出今日' : '加入今日'}">${icon('sun')}</button>`}
   </div>`;
 }
@@ -350,7 +361,7 @@ function validScope(sc, allowAll = true) {
   const p = list('projects').find(x => x.status === 'active') || list('projects')[0];
   return p ? p.id : '_loose';
 }
-Object.assign(SY, { isSel, prioTag, projChip, dueTag, taskRow, progBar, scopeSelect, validScope });
+Object.assign(SY, { isSel, aiCls, aiBadge, aiNote, prioTag, projChip, dueTag, taskRow, progBar, scopeSelect, validScope });
 
 /* generic chart view: header + scope toolbar + module body */
 SY.chartView = (key, title, sub, opts = {}) => ({
@@ -419,7 +430,7 @@ function renderInspector() {
     const pool = scopeTasks(t.projectId && S.data.projects.has(t.projectId) ? t.projectId : '_loose').filter(x => x.id !== t.id && !(t.deps || []).includes(x.id));
     const sm = succMap();
     const cands = pool.filter(x => !reaches(t.id, x.id, sm));
-    h = head('任务') + `<div class="insp-body">
+    h = head('任务') + `<div class="insp-body">${aiNote(item.id)}
       <textarea class="insp-title" data-f="title" rows="1" aria-label="任务标题">${esc(t.title)}</textarea>
       <div class="field"><span class="lbl">状态</span>${seg('status', t.status, [['todo', '待办'], ['doing', '进行中'], ['done', '已完成']])}</div>
       <div class="field"><span class="lbl">优先级</span>${seg('priority', t.priority || 0, [[1, 'P1'], [2, 'P2'], [3, 'P3'], [0, '无']])}</div>
@@ -440,7 +451,7 @@ function renderInspector() {
     </div>`;
   } else if (sel.col === 'ideas') {
     const i = item, p = getP(i.projectId);
-    h = head('灵感') + `<div class="insp-body">
+    h = head('灵感') + `<div class="insp-body">${aiNote(item.id)}
       <textarea class="insp-title" data-f="text" rows="2" aria-label="灵感内容">${esc(i.text)}</textarea>
       <div class="field"><span class="lbl">状态</span>${seg('status', i.status, [['inbox', '收件箱'], ['incubating', '孵化中'], ['converted', '已转化'], ['archived', '归档']])}</div>
       <div class="field"><label class="lbl" for="i-tags">标签</label><input class="in" id="i-tags" data-f="tags" value="${esc((i.tags || []).join(' '))}" placeholder="空格分隔，如：agent 效率"></div>
@@ -459,7 +470,7 @@ function renderInspector() {
     </div>`;
   } else {
     const p = item, s = pStats(p.id), col = pColor(p);
-    h = head('项目') + `<div class="insp-body">
+    h = head('项目') + `<div class="insp-body">${aiNote(item.id)}
       <textarea class="insp-title" data-f="name" rows="1" aria-label="项目名称">${esc(p.name)}</textarea>
       <div class="field"><span class="lbl">领域</span>${seg('area', p.area || 'work', [['work', '工作'], ['life', '生活']])}</div>
       <div class="field"><span class="lbl">状态</span>${seg('status', p.status || 'active', [['active', '进行中'], ['paused', '暂停'], ['done', '已完成']])}</div>
@@ -723,6 +734,11 @@ $('#insp').addEventListener('focusout', () => setTimeout(scheduleRender, 0));
 /* actions */
 Object.assign(SY.acts, {
   'view': el => setView(el.dataset.v),
+  'review-ack': async el => {
+    if (el) el.disabled = true;
+    try { await SY.store.ackReview(); }
+    catch (e) { SY.toast('确认失败：' + SY.errText(e)); if (el) el.disabled = false; }
+  },
   'open-project': el => goProject(el.dataset.id),
   'edit-project': el => select('projects', el.dataset.id),
   'new-project': () => { const p = newProject({ area: S.ui.projArea === 'life' ? 'life' : 'work' }); goProject(p.id, 'board'); select('projects', p.id); setTimeout(() => { const t = $('#insp .insp-title'); if (t) { t.focus(); t.select(); } }, 60); },

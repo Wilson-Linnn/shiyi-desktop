@@ -184,6 +184,7 @@ async function load() {
   }
   SY.COLS.forEach(c => { S.data[c] = data[c]; });
   if (S.sel && !(S.data[S.sel.col] && S.data[S.sel.col].has(S.sel.id))) S.sel = null;
+  await loadReview();
   S.ready = true; S.rev++;
 }
 async function reload() { await flush(); await load(); SY.renderAll(); }
@@ -297,6 +298,22 @@ function importLocal(obj) {
   return n;
 }
 
+/* ---------- review: mark agent changes until the user confirms ---------- */
+async function loadReview() {
+  S.pending = new Map();
+  if (!invoke) return;
+  try {
+    const r = await invoke('core_query', { q: { q: 'review' } });
+    for (const e of (r.entities || [])) if (e && e.id) S.pending.set(e.id, e);
+  } catch (e) { console.error(e); }
+}
+async function ackReview() {
+  if (!invoke) return;
+  await invoke('core_apply', { req: { op: 'review.ack' } });
+  await loadReview();
+  SY.renderAll();
+}
+
 /* ---------- AI agents changed the database ---------- */
 let watching = false;
 async function onDbChanged() {
@@ -327,5 +344,5 @@ function watch() {
   });
 }
 
-SY.store = { record, schedule, flush, load, reload, undo, getLog, setPermission, snapshot, importLocal, watch, toCore, fromCore, summarize };
+SY.store = { record, schedule, flush, load, reload, undo, getLog, setPermission, snapshot, importLocal, watch, loadReview, ackReview, toCore, fromCore, summarize };
 })();

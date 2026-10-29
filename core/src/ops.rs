@@ -219,6 +219,9 @@ impl<'a> Ctx<'a> {
         if name == "settings.set" || name == "setting.set" || name == "set_setting" {
             return self.settings_set(op);
         }
+        if name == "review.ack" || name == "review_ack" {
+            return self.review_ack();
+        }
         let (tpart, vpart) = match name.split_once('.') {
             Some((a, b)) => (a.to_string(), b.to_string()),
             None => match name.split_once('_') {
@@ -1220,6 +1223,18 @@ impl<'a> Ctx<'a> {
     }
 
     // ---------- settings ----------
+
+    /// The user confirms the agent changes shown in the GUI, advancing the
+    /// review watermark to the current log head. Not a data change, so it is
+    /// not logged in the operation log.
+    fn review_ack(&mut self) -> Result<Value> {
+        if !self.is_user() {
+            return Err(Error::new("permission_denied", "only the user can acknowledge agent changes").hint("confirm them in 拾忆's interface"));
+        }
+        let max_seq: i64 = self.tx.query_row("SELECT COALESCE(MAX(seq),0) FROM ops", [], |r| r.get(0))?;
+        Core::meta_set(self.tx, crate::db::REVIEW_SEQ, &max_seq.to_string())?;
+        Ok(json!({ "review_seq": max_seq }))
+    }
 
     fn settings_set(&mut self, op: &Map<String, Value>) -> Result<Value> {
         if !self.is_user() {

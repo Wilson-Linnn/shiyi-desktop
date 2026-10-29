@@ -44,6 +44,10 @@ CREATE INDEX IF NOT EXISTS ops_actor ON ops(actor, seq);
 
 pub const SCHEMA_VERSION: &str = "1";
 
+/// Meta key: the ops seq up to which agent changes have been acknowledged
+/// ("确认") in the GUI. Any agent change after this seq is marked pending.
+pub(crate) const REVIEW_SEQ: &str = "review_seq";
+
 /// Where the app keeps its data. `SHIYI_HOME` overrides.
 pub fn data_dir() -> PathBuf {
     if let Some(d) = std::env::var_os("SHIYI_HOME") {
@@ -115,6 +119,9 @@ impl Core {
         self.conn.execute_batch(SCHEMA)?;
         self.conn.execute("INSERT OR IGNORE INTO meta(key,value) VALUES('schema_version',?1)", [SCHEMA_VERSION])?;
         self.conn.execute("INSERT OR IGNORE INTO meta(key,value) VALUES('agent_permission','write')", [])?;
+        // On first run (or first run of this feature) start the review watermark
+        // at the current log head, so only *future* agent changes are marked.
+        self.conn.execute("INSERT OR IGNORE INTO meta(key,value) VALUES(?1,(SELECT COALESCE(MAX(seq),0) FROM ops))", [REVIEW_SEQ])?;
         Ok(())
     }
 

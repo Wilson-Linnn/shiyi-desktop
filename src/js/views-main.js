@@ -104,11 +104,11 @@ function ideaCard(i) {
        <button type="button" class="mini" data-act="idea-to-project" data-id="${esc(i.id)}">${icon('folder', 13)}转项目</button>
        ${i.status === 'inbox' ? `<button type="button" class="mini" data-act="idea-status" data-v="incubating" data-id="${esc(i.id)}">孵化</button>` : ''}
        <button type="button" class="mini" data-act="idea-status" data-v="archived" data-id="${esc(i.id)}" title="归档" aria-label="归档">${icon('archive', 13)}</button>`;
-  return `<div tabindex="0" class="idea clay ${SY.isSel('ideas', i.id) ? 'is-sel' : ''} ${i.status === 'archived' ? 'is-faded' : ''}" data-open="ideas:${esc(i.id)}">
+  return `<div tabindex="0" class="idea clay ${SY.isSel('ideas', i.id) ? 'is-sel' : ''} ${i.status === 'archived' ? 'is-faded' : ''}${SY.aiCls(i.id)}" data-open="ideas:${esc(i.id)}">
     <span class="idea-band" style="--c:${cv(IDEA_COL[i.status] || 'lav')}"></span>
     <button type="button" class="star ${i.star ? 'is-on' : ''}" data-act="star" data-id="${esc(i.id)}" aria-label="${i.star ? '取消星标' : '加星标'}">${icon('star')}</button>
     <p class="idea-text">${SY.richText(i.text)}</p>
-    <div class="meta">${(i.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join('')}<span class="age ${stale ? 'is-stale' : ''}">${stale ? '已放 ' + d + ' 天' : esc(ago(i.createdAt))}</span>${st}
+    <div class="meta">${SY.aiBadge(i.id)}${(i.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join('')}<span class="age ${stale ? 'is-stale' : ''}">${stale ? '已放 ' + d + ' 天' : esc(ago(i.createdAt))}</span>${st}
       ${p ? `<button type="button" class="linkish" data-act="open-project" data-id="${esc(p.id)}">→ ${esc(p.name)}</button>` : ''}${i.note ? '<span>有补充</span>' : ''}</div>
     <div class="row-acts">${acts}</div></div>`;
 }
@@ -153,8 +153,8 @@ SY.views.projects = {
 };
 function pcard(p) {
   const s = pStats(p.id), idle = ageDays(s.last), stale = p.status === 'active' && idle >= 7;
-  return `<div class="pcard clay" role="button" tabindex="0" data-act="open-project" data-id="${esc(p.id)}" style="--c:${cv(pColor(p))}">
-    <div class="pcard-h"><span class="dot" style="--c:${cv(pColor(p))}"></span><span class="nm">${esc(p.name)}</span><span class="pill">${AREA[p.area] || '工作'}</span>${p.status !== 'active' ? `<span class="pill ${p.status === 'done' ? 'pill-ok' : ''}">${PROJ_ST[p.status]}</span>` : ''}</div>
+  return `<div class="pcard clay${SY.aiCls(p.id)}" role="button" tabindex="0" data-act="open-project" data-id="${esc(p.id)}" style="--c:${cv(pColor(p))}">
+    <div class="pcard-h"><span class="dot" style="--c:${cv(pColor(p))}"></span><span class="nm">${esc(p.name)}</span>${SY.aiBadge(p.id)}<span class="pill">${AREA[p.area] || '工作'}</span>${p.status !== 'active' ? `<span class="pill ${p.status === 'done' ? 'pill-ok' : ''}">${PROJ_ST[p.status]}</span>` : ''}</div>
     <p class="goal">${p.goal ? esc(p.goal) : '<span style="color:var(--ink-3)">还没写完成标准</span>'}</p>
     <div class="prog">${progBar(s)}<span class="mono">${s.done}/${s.total}</span></div>
     <div class="next">${s.next ? `<span class="k">下一步</span>${esc(s.next.title)}` : `<span class="k">${s.total ? '任务都完成了' : '还没有任务'}</span>`}</div>

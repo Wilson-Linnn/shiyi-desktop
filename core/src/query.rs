@@ -38,6 +38,7 @@ pub fn query(core: &Core, req: Value) -> Result<Value> {
         "status" | "info" => status(core, &clock)?,
         "snapshot" | "dump" | "export" => snapshot(core, &clock)?,
         "settings" => json!({ "agent_permission": core.permission() }),
+        "review" => review(core)?,
         "" => return Err(Error::new("invalid_request", "which query?").hint("set \"q\" to one of: today, list, get, search, related, graph, log, trash, schema, doctor, status, snapshot")),
         other => return Err(Error::new("unknown_query", format!("unknown query {:?}", other)).hint("queries: today, list, get, search, related, graph, log, trash, schema, doctor, status, snapshot")),
     };
@@ -518,6 +519,74 @@ fn log(conn: &Connection, o: &Map<String, Value>) -> Result<Value> {
     }
     let max_seq: i64 = conn.query_row("SELECT COALESCE(MAX(seq),0) FROM ops", [], |r| r.get(0))?;
     Ok(json!({ "batches": out, "max_seq": max_seq }))
+}
+
+/// Changes an agent made after the last "确认" (acknowledgement), grouped by
+/// entity, so the GUI can mark them until the user reviews and confirms them.
+fn review(core: &Core) -> Result<Value> {
+    let watermark = core
+        .meta_get(crate::db::REVIEW_SEQ)?
+        .and_then(|s| s.parse::<i64>().ok())
+        .unwrap_or(0);
+    let mut st = core.conn.prepare(
+        "SELECT seq, entity_type, entity_id, summary FROM ops
+         WHERE actor LIKE 'agent:%' AND seq > ?1
+           AND entity_type IN ('idea','project','task','map','link')
+           AND entity_id IS NOT NULL
+         ORDER BY seq",
+    )?;
+    let rows = st.query_map([watermark], |r| {
+        Ok((
+            r.get::<_, i64>(0)?,
+            r.get::<_, String>(1)?,
+            r.get::<_, String>(2)?,
+            r.get::<_, Option<String>>(3)?,
+        ))
+    })?;
+    let mut index: HashMap<String, usize> = HashMap::new();
+    let mut entities: Vec<Value> = Vec::new();
+    let mut summaries: Vec<Vec<String>> = Vec::new();
+    let mut counts: Vec<usize> = Vec::new();
+    let mut seqs: Vec<i64> = Vec::new();
+    let mut total = 0usize;
+    for row in rows {
+        let (seq, etype, eid, summary) = row?;
+        total += 1;
+        let i = match index.get(&eid) {
+            Some(&i) => i,
+            None => {
+                let i = entities.len();
+                index.insert(eid.clone(), i);
+                entities.push(json!({ "id": eid, "type": etype }));
+                summaries.push(Vec::new());
+                counts.push(0);
+                seqs.push(0);
+                i
+            }
+        };
+        if let Some(s) = summary {
+            if !s.is_empty() && summaries[i].len() < 4 && !summaries[i].contains(&s) {
+                summaries[i].push(s);
+            }
+        }
+        counts[i] += 1;
+        seqs[i] = seqs[i].max(seq);
+    }
+    let mut list = Vec::with_capacity(entities.len());
+    for i in 0..entities.len() {
+        if let Value::Object(mut o) = entities[i].clone() {
+            o.insert("seq".into(), json!(seqs[i]));
+            o.insert("count".into(), json!(counts[i]));
+            o.insert("summary".into(), json!(summaries[i].join("；")));
+            list.push(Value::Object(o));
+        }
+    }
+    Ok(json!({
+        "watermark": watermark,
+        "max_seq": core.max_seq(),
+        "count": total,
+        "entities": list
+    }))
 }
 
 fn doctor(conn: &Connection) -> Result<Value> {
